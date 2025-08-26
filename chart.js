@@ -255,7 +255,7 @@ const pluginRadarChart = {
 
 // #region 공통 유틸 함수
 // 공통: x축 버튼 생성
-function createCustomXButtons(chartWrapper, chart, labels) {
+function createCustomXButtons(chartWrapper, chart, labels, dataPoints = null) {
   let btnContainer = chartWrapper.querySelector(".custom-x-btns");
 
   if (!btnContainer) {
@@ -266,7 +266,13 @@ function createCustomXButtons(chartWrapper, chart, labels) {
 
   btnContainer.innerHTML = "";
 
+  // null 값이 있는 데이터의 경우 실제 데이터 포인트만 버튼 생성
   labels.forEach((label, idx) => {
+    // dataPoints가 제공되고 해당 인덱스의 모든 데이터가 null인 경우 버튼 생성하지 않음
+    if (dataPoints && dataPoints.every(dataset => dataset.data[idx] === null)) {
+      return;
+    }
+
     const btn = document.createElement("button");
     btn.innerText = label;
     btn.dataset.index = idx;
@@ -367,10 +373,22 @@ function createLegendInfo(chartWrapper, legends, datasets, selectedIndex, chartK
 }
 
 // 공통: 차트 캔버스 크기 설정
-function setupChartCanvasSize(canvas, labels, chartHeight = 190) {
+function setupChartCanvasSize(canvas, labels, chartHeight = 190, includeNullValues = false) {
   const buttonWidth = 52;
   const buttonGap = 10;
-  const totalButtonsWidth = buttonWidth * labels.length + buttonGap * (labels.length - 1);
+  
+  // null 값이 포함된 경우 실제 데이터 포인트만 계산
+  let visibleLabels = labels;
+  if (includeNullValues) {
+    // null이 아닌 실제 데이터 포인트만 카운트
+    visibleLabels = labels.filter((label, index) => {
+      // 실제로는 데이터에서 null이 아닌 값들만 필터링해야 하지만
+      // 여기서는 라벨 기준으로 처리
+      return label !== null && label !== undefined;
+    });
+  }
+  
+  const totalButtonsWidth = buttonWidth * visibleLabels.length + buttonGap * (visibleLabels.length - 1);
   
   // 차트 너비는 버튼 영역과 동일하게 설정
   const canvasWidth = Math.max(totalButtonsWidth, 57);
@@ -395,7 +413,7 @@ function handleTensionChartPointClick(chartWrapper, chart, index) {
 function handleLineChartPointClick(chartWrapper, chart, index) {
   handleChartPointClick(chartWrapper, chart, index);
   // line chart 전용 범례 업데이트
-  createLegendInfo(chartWrapper, sampleLineLegends, chart.config.data.datasets, index, "LINE_CHART0", ".tab-contents");
+  createLegendInfo(chartWrapper, sampleLineLegends, chart.config.data.datasets, index, "LINE_CHART0", ".line-section");
 }
 
 // radar chart 범례 생성
@@ -844,27 +862,44 @@ function setLineChart($parent, $chartWrapper, $target, $idx, label, data0, data1
   const canvas = $target[0];
   const chartHeight = $parent.dataset.chartHeight ? Number($parent.dataset.chartHeight) : 190;
   
-  // 공통 함수로 캔버스 크기 설정
-  const firstPointOffset = setupChartCanvasSize(canvas, label, chartHeight);
+  // 실제 데이터 포인트만 필터링 (null이 아닌 값들)
+  const validDataIndices = [];
+  const validLabels = [];
+  const validData0 = [];
+  const validData1 = [];
+  
+  label.forEach((lbl, idx) => {
+    if (data0[idx] !== null && data1[idx] !== null) {
+      validDataIndices.push(idx);
+      validLabels.push(lbl);
+      validData0.push(data0[idx]);
+      validData1.push(data1[idx]);
+    }
+  });
+
+  // 공통 함수로 캔버스 크기 설정 (유효한 데이터만 사용)
+  const firstPointOffset = setupChartCanvasSize(canvas, validLabels, chartHeight);
 
   const datasets = {
-    labels: label,
+    labels: label, // 원본 라벨 유지 (null 포함)
     datasets: [
       {
         label: "김민지",
-        data: data0,
+        data: data0, // 원본 데이터 유지 (null 포함)
         borderColor: "#45BCFF",
         backgroundColor: "#94D8FF",
         pointBorderColor: "#45BCFF",
         pointBackgroundColor: "#94D8FF",
+        spanGaps: true, // null 값 건너뛰기
       },
       {
         label: "과목 평균",
-        data: data1,
+        data: data1, // 원본 데이터 유지 (null 포함)
         borderColor: "#A6A6A6",
         backgroundColor: "#C6C6C6",
         pointBorderColor: "#A6A6A6",
         pointBackgroundColor: "#C6C6C6",
+        spanGaps: true, // null 값 건너뛰기
       },
     ],
   };
@@ -895,7 +930,7 @@ function setLineChart($parent, $chartWrapper, $target, $idx, label, data0, data1
       elements: {
         line: {
           borderWidth: 3,
-          cubicInterpolationMode: "monotone",
+          tension: 0, // 곡선을 직선으로 변경
         },
         point: {
           pointStyle: "circle",
@@ -975,10 +1010,16 @@ function setLineChart($parent, $chartWrapper, $target, $idx, label, data0, data1
   const chartInstance = new Chart($target[0].getContext("2d"), config);
   _chart["LINE_CHART" + $idx] = chartInstance;
 
-  // 공통 함수들 사용
-  createCustomXButtons($chartWrapper, chartInstance, label);
+  // 공통 함수들 사용 (유효한 데이터만으로 버튼 생성)
+  createCustomXButtons($chartWrapper, chartInstance, label, datasets.datasets);
   registerChartClickEvent(canvas, $chartWrapper, chartInstance, handleLineChartPointClick);
-  setInitialPointSelection($chartWrapper, chartInstance, handleLineChartPointClick);
+  
+  // 초기 선택을 첫 번째 유효한 데이터 포인트로 설정
+  if (validDataIndices.length > 0) {
+    setTimeout(() => {
+      handleLineChartPointClick($chartWrapper, chartInstance, validDataIndices[0]);
+    }, 100);
+  }
 }
 
 function loadElLineChart() {
