@@ -253,6 +253,358 @@ const pluginRadarChart = {
 
 //#endregion 차트 플러그인
 
+// #region 기존 line chart 플러그인
+const pluginLineCustom = {
+  id: 'scaleLabel',
+  beforeDraw(chart, args, _opt) { //240118 바-라인 차트의 경우 세로줄 위치 조정
+    const {
+      ctx,
+      canvas,
+      config,
+      scales: { x, y },
+    } = chart;
+
+    const barDataset = chart.getDatasetMeta(0);
+    //240124 parent 변수 추가
+    const parent = canvas.parentElement;
+    //240124 bar-line-chart 삭제 single-main-bar-chart 추가
+    if(parent.classList.contains('single-main-bar-chart')){
+      barDataset.data.forEach((dataPoint, index) => {
+        const verticalLineX = dataPoint.x;
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.setLineDash([2, 2]);
+        ctx.moveTo(verticalLineX, y.top);
+        ctx.lineTo(verticalLineX, y.bottom);
+        ctx.strokeStyle = '#d9d9d9';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        ctx.restore();
+      });            
+    }
+
+    //240306 학생 월간리포트 영상 학습시간, 문제풀이수 y max값이 데이터의 최대값으로 들어가게
+    const dataMaxValue = Math.max(
+      ...chart.data.datasets.map(dataset => Math.max(...dataset.data))
+    );
+    // 240308 문제풀이 차트 최대값 올림 값
+    const solveNum = Math.ceil(dataMaxValue / 10) * 10;
+    // 240308 영상학습시간 차트 최대값의 30배수 값
+    const videoTime = Math.ceil(dataMaxValue / 30) * 30;
+    const hasData = chart.data.datasets.some(dataset => (
+      dataset.data.some(value => value > 0)
+    ));
+    const _parent = chart.canvas.parentElement;
+    if(_parent.classList.contains('is--solve') && 
+    _parent.classList.contains('test_solve') && 
+    !_parent.classList.contains('triple-bar-chart')) { // 240829 test_solve 추가 (월간리포트만 적용)  240923 트리플 차트 제외 추가    
+      //240306 데이터가 있을 경우에만 차트 data의 최대값이 들어가도록 수정
+      // 240308 문제풀이 차트 데이터의 최대값의 올림이 y max로 들어가도록 수정
+      if(hasData) {
+        chart.config.options.scales.y.ticks.stepSize = solveNum/4;
+        chart.config.options.scales.y.max = solveNum;   
+      } 
+      // 240829 test_solve 추가 (월간리포트만 적용)
+    } else if (_parent.classList.contains('is--watch') && _parent.classList.contains('test_solve')) { //240308 영상학습 차트 최소값이 60이고, 최대값이 30분 단위로 적용되게 수정
+      if(hasData) {
+        if (dataMaxValue <= 60) {
+          chart.config.options.scales.y.ticks.stepSize = 60/4;
+          chart.config.options.scales.y.max = 60;   
+        } else {    
+          chart.config.options.scales.y.ticks.stepSize = videoTime/4;
+          chart.config.options.scales.y.max = videoTime;                
+        }
+      } 
+    }
+    // #240306 학생 월간리포트 영상 학습시간, 문제풀이수 y max값이 데이터의 최대값으로 들어가게
+  },
+  afterDatasetsDraw(chart, args, _opt) {
+    const {
+      ctx,
+      canvas,
+      config,
+      scales: { x, y },
+    } = chart;
+
+    //240124 parent 변수 추가
+    const parent = canvas.parentElement;
+
+    //240118 누적 학습수준 y라벨 위치 조정
+    //240124 클래스 bar-line-chart > main-doubleBar-chart 변경
+
+    //240722 line-chart 추가로 y라벨 위치조정 함수로 변경
+    function drawCustomYLabel(chart, ctx, offsets) {
+      const scale = chart.scales.y;
+      const customLabels = ['미흡', '다소 미흡', '보통', '우수', '매우 우수']
+      
+      chart.data.labels.forEach((label, index) => {
+        if (index >= customLabels.length) return;
+        const tick = scale.ticks[index];
+        const currentOffset = offsets[index % offsets.length];
+        
+
+        // 텍스트 위치 조정
+        const x = scale.right - 10;
+        const y = scale.getPixelForTick(index) + currentOffset;                
+        
+        // 텍스트 그리기
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.textAlign = 'right';
+        ctx.font = `bold ${scale.options.ticks.font.size}px ${scale.options.ticks.font.family}`;
+        ctx.fillStyle = '#000';
+        ctx.fillText(customLabels[index], 0, 0);
+        ctx.restore();
+      });
+    }
+    if (parent.classList.contains('main-doubleBar-chart')) {
+      const offsets = [-13, -35, -22, -35, -10];
+      // drawCustomYLabel(chart, ctx, offsets); 240828 y 라벨삭제
+    }
+    if (parent.classList.contains('line-chart')) {
+      const offsets = [-6, -25, -15, -25, -5];
+      drawCustomYLabel(chart, ctx, offsets);
+    }
+
+    //240102 데이터 없을 경우 추가
+    const {datasets} = chart.data;
+    let hasData = false;
+
+    for (let i = 0; i < datasets.length; i += 1) {
+      const dataset = datasets[i];
+      for (let j = 0; j < dataset.data.length; j += 1) {
+        if (dataset.data[j] !== 0) {
+          hasData = true;
+          break;
+        }
+      }
+      if (hasData) {
+        break;
+      }
+    }
+
+    if (!hasData && parent.classList.contains('empty_txt')) {//240206 클래스 empty_txt만 해당으로 수정
+      chart.options.scales.y.grid.display = false;
+
+      // 데이터가 없을 때 '데이터가 없습니다' 텍스트 객체 생성
+      // 240206 '데이터가 없습니다' 문구 위치 수정
+      const canvasWidthNumber = parseInt(canvas.style.width, 10);
+      const canvasHeightNumber = parseInt(canvas.style.height, 10);
+      const dataAreaWidth = canvas.width - (_opt.y.width + _opt.y.space); 
+      const dataAreaHeight = canvasHeightNumber - (_opt.x.height + _opt.x.space + _opt.x.padding); 
+
+      ctx.beginPath();
+      ctx.rect(canvas.width - dataAreaWidth, 0, dataAreaWidth, dataAreaHeight); 
+      ctx.fillStyle = _opt.x.color;
+      ctx.fill();
+      ctx.closePath();
+
+      //텍스트
+      ctx.beginPath();
+      
+      const text = '데이터가 없습니다.';
+      ctx.font = '20px NanumSquareRound';
+      // 240206 '데이터가 없습니다' 문구 위치 수정
+      const textWidth = ctx.measureText(text).width;
+      const textX = (canvasWidthNumber - _opt.y.width + _opt.y.space - textWidth) / 2;
+      ctx.fillStyle = '#1A1A1A';
+      ctx.fillText(text, textX, dataAreaHeight / 2 - 20);
+      ctx.closePath();
+    }
+
+    //240102 데이터 없을 경우 추가
+
+    let _cellWidth = 0;
+    const _xTicksPadding = config._config.options.scales.x.ticks.padding;
+
+    const typeDoubleBar = canvas.parentNode.classList.contains(
+      'double-bar-chart'
+    )
+      ? true
+      : false;
+    const typeTripleBar = canvas.parentNode.classList.contains(
+      'triple-bar-chart'
+    )
+      ? true
+      : false;
+    const typeAnswerRatio = canvas.parentNode.classList.contains(
+      'answer-raio-bar'
+    )
+      ? true
+      : false;
+    // [KT요청 : 230803] 전 과목 누적 학습 수준 변경
+    const typeTension = canvas.parentNode.classList.contains(
+      'tension-line-chart'
+    )
+      ? true
+      : false;
+
+    const typeXTentionMonth =
+      _opt.x.height == 'tension' ||
+      canvas.parentNode.classList.contains('month')
+        ? true
+        : false;
+
+    if (_opt.x && _opt.x.display && x._labelItems !== null) {
+      x._labelItems.forEach((label, idx) => {
+        const pos = label.options.translation;
+
+        const _labelW =
+          idx == 0 || idx == x._labelSizes.widths.length - 1
+            ? x._labelSizes.widths[idx] - 2
+            : x._labelSizes.widths[idx];
+
+        let _labelFirstW = 0;
+        if (
+          _opt.y !== undefined &&
+          _opt.y.space !== undefined &&
+          _opt.x.more !== undefined
+        ) {
+          _labelFirstW =
+            idx == 0 && _opt.y.space > 0 ? _opt.y.space : 0;
+        }
+
+        let _labelBoxW = 0;
+        // [KT요청 : 230803] 전 과목 누적 학습 수준 변경
+        if (
+          typeDoubleBar ||
+          typeTripleBar ||
+          typeAnswerRatio ||
+          typeTension
+        ) {
+          if (_opt.x.weight) {
+            _labelBoxW = _opt.x.width + 5;
+          } else {
+            _labelBoxW = _opt.x.padding * 2 + _labelW + 5;
+          }
+        } else {
+          if (_opt.x.weight) {
+            _labelBoxW = _opt.x.width;
+          } else {
+            _labelBoxW = _opt.x.padding * 2 + _labelW;
+          }
+        }
+
+        const _labelCenter = _opt.x.width
+          ? pos[0] - _labelBoxW * 0.5
+          : pos[0] - _labelW * 0.5 - _opt.x.space;
+
+        const _labelTextCenter = pos[0] - _labelW * 0.5;
+
+        const optHeight = typeXTentionMonth ? 24 : _opt.x.height;
+        const _textPt = optHeight - label.font.lineHeight;
+
+        // [KT요청 : 230803] 전 과목 누적 학습 수준 변경
+        const labelTop =
+          typeXTentionMonth && !typeTension
+            ? pos[1] - 4
+            : typeTension
+            ? pos[1]
+            : typeAnswerRatio
+            ? pos[1] + 3.5
+            : _opt.x.width
+            ? pos[1] - 4
+            : _opt.x.width
+            ? pos[1] - _textPt * 1.3
+            : pos[1];
+
+        const _textTop = typeXTentionMonth
+          ? pos[1] + _textPt + 5
+          : _opt.x.padding == 0 && _opt.x.space == 0
+          ? pos[1] + _textPt
+          : pos[1] + _xTicksPadding + _textPt;
+
+        let nextPos;
+        // console.log(x._labelItems);
+                
+        if (x._labelItems[idx + 1]) {
+          nextPos = x._labelItems[idx + 1].options.translation;
+        } else {
+          nextPos = x._labelItems[idx - 1].options.translation;
+        }
+
+        _cellWidth = Math.abs(nextPos[0] - pos[0]);
+        const _zeroRectL = idx == 0 ? pos[0] - _labelBoxW + 15 : pos[0];
+        const _zeroRectW =
+          idx == 0 ? _cellWidth + _labelBoxW : _cellWidth;
+
+        const _yWidth =
+          _opt.y && _opt.y.width && idx == 0 ? _opt.y.width : 0;
+
+        // label과 zeroLine 사이 튀어나온 선
+        ctx.beginPath();
+        ctx.rect(
+          _zeroRectL + _yWidth - _labelFirstW,
+          x.top + 1,
+          _zeroRectW - _yWidth + _labelFirstW,
+          _opt.x.space + optHeight + _xTicksPadding + 30
+        );
+        ctx.fillStyle = _opt.x.color;
+        ctx.fill();
+        ctx.closePath();
+
+        //240206 학습진단 차트 데이터 있을때 변수
+        const mutipleChart = chart.canvas.parentElement.classList.contains('multiple_exam') && !chart.canvas.parentElement.classList.contains('is--empty')
+        // 라벨 BG
+        if (label.label !== '') {
+          ctx.beginPath();
+          ctx.roundRect(
+            _labelCenter - 2, // 앞에 빈 데이터 있음
+            // x.top + _opt.x.space + _xTicksPadding + 1,
+            //240206 학습진단 차트일떄만 라벨 위치 조정
+            mutipleChart
+            ? labelTop + 8 
+            : labelTop,
+            _labelBoxW,
+            optHeight,
+            _opt.x.radius
+          );
+          ctx.fillStyle = _opt.x.label;
+          ctx.fill();
+          ctx.closePath();
+
+          // 라벨 그리기
+          ctx.beginPath();
+
+          // console.log(label.font);
+          ctx.font = label.font.string;
+          // ctx.font = 'normal 14px NanumSquareRound';
+          ctx.fillStyle = label.options.color;
+          ctx.fillText(
+            label.label,
+            _labelTextCenter, // 앞에 빈 데이터 있음
+            _textTop
+          );
+          ctx.closePath();
+        }
+      });
+    }
+
+    if (_opt.y && _opt.y.display && y._labelItems !== null) {
+      y._labelItems.forEach((label, idx) => {
+        const pos = label.options.translation;
+        if (_opt.y.width) {
+          pos[0] = _opt.y.width;
+        }
+
+        // label과 zeroLine 사이 튀어나온 선
+        ctx.beginPath();
+        ctx.rect(
+          _opt.y.width,
+          pos[1] - _opt.y.height * 0.5,
+          _opt.y.space,
+          _opt.y.height
+        );
+        ctx.fillStyle = _opt.y.color;
+        ctx.fill();
+        ctx.closePath();
+      });
+    }
+  },
+};
+// #endregion 기존 line chart 플러그인
+
 // #region 공통 유틸 함수
 // 공통: x축 버튼 생성
 function createCustomXButtons(chartWrapper, chart, labels) {
@@ -841,54 +1193,99 @@ function loadElRadarChart() {
  *     <canvas class="chart"></canvas>
  * </div>
  */
-function setLineChart($parent, $chartWrapper, $target, $idx, label, data0, data1) {
-  const canvas = $target[0];
-  const chartHeight = $parent.dataset.chartHeight ? Number($parent.dataset.chartHeight) : 190;
-  
+function setLineChart(
+  $parent,
+  $chartWrapper,
+  $target,
+  $idx,
+  $labelSpaceX,
+  $labelSpaceY,
+  linelabel,
+  datalabel,
+  data
+) {
+  let _y = $labelSpaceY;
+  let _x = $labelSpaceX;
+
+  //240701 초등ui 
+  const isEleWrap = document.querySelector('.wrap') && document.querySelector('.wrap').classList.contains('ele_ui');
+  function isEleLayer(){
+    const layerArea = document.querySelector('.layer-area')
+    if(layerArea){
+      if(layerArea.classList.contains('ele_ui')){
+        return true
+      }
+    }
+    return false;
+  }
+  const isEleChart = isEleWrap || isEleLayer();
+
+  const datasets = {
+    labels: linelabel,
+    datasets: [
+      {
+        label: datalabel[1],
+        data: data[1].data,
+        borderColor: '#A6A6A6',
+        backgroundColor: '#C6C6C6',
+        pointBorderColor: '#A6A6A6',
+        pointBackgroundColor: '#C6C6C6',
+      },
+      {
+        label: datalabel[0],
+        data: data[0].data,
+        tooltip: [
+          '화법과 작문, 미적분, 확률과 통계, 영어 독해, 생활과 윤리, 한국지리, 동아시아사, 생명과학, 지구과학',
+          '과목 BB',
+          '과목 CC',
+          '과목 DD',
+          '과목 EE',
+        ],
+        //240701 초등ui 색상 추가
+        borderColor: isEleChart ? '#58AFFF' : '#45BCFF',
+        backgroundColor: isEleChart? '#DEEFFF' : '#94D8FF',
+        pointBorderColor: isEleChart? '#58AFFF' : '#45BCFF',
+        pointBackgroundColor: isEleChart? '#DEEFFF' : '#94D8FF',
+        userChart: true,
+      },
+    ],
+  };
+
   // 버튼 설정
   const buttonWidth = 52;
   const buttonGap = 10;
   
   // 전체 버튼 영역 계산
-  const totalButtonsWidth = buttonWidth * label.length + buttonGap * (label.length - 1);
+  const totalButtonsWidth = buttonWidth * linelabel.length + buttonGap * (linelabel.length - 1);
   
   // 캔버스 너비는 버튼 영역과 동일하게 설정
   const canvasWidth = totalButtonsWidth;
+  const chartHeight = $parent.dataset.chartHeight ? Number($parent.dataset.chartHeight) : 190;
   
-  canvas.height = chartHeight;
-  canvas.width = canvasWidth;
+  $target[0].height = chartHeight;
+  $target[0].width = canvasWidth;
 
-  const datasets = {
-    labels: label,
-    datasets: [
-      {
-        label: "김민지",
-        data: data0,
-        borderColor: "#45BCFF",
-        backgroundColor: "#94D8FF",
-        pointBorderColor: "#45BCFF",
-        pointBackgroundColor: "#94D8FF",
-      },
-      {
-        label: "과목 평균",
-        data: data1,
-        borderColor: "#A6A6A6",
-        backgroundColor: "#C6C6C6",
-        pointBorderColor: "#A6A6A6",
-        pointBackgroundColor: "#C6C6C6",
-      },
-    ],
-  };
-
+  // OPTIONS
   const config = {
-    type: "line",
+    type: 'line',
     data: datasets,
     options: {
       responsive: false,
       maintainAspectRatio: false,
-      devicePixelRatio: 1,
-      animation: {
-        duration: 0,
+      elements: {
+        line: {
+          borderWidth: 3,
+          tension: 0, // 직선
+          hoverBorderColor: (c) => {},
+          hoverBackgroundColor: (c) => {},
+        },
+        point: {
+          pointStyle: 'circle',
+          pointRadius: 4,
+          pointBorderWidth: 2,
+          pointHoverRadius: 4,
+          pointHoverBorderWidth: 2,
+        },
       },
       layout: {
         padding: {
@@ -899,76 +1296,116 @@ function setLineChart($parent, $chartWrapper, $target, $idx, label, data0, data1
         },
         autoPadding: false,
       },
-      interaction: {
-        mode: "index",
-        intersect: false,
-      },
-      elements: {
-        line: {
-          borderWidth: 3,
-          tension: 0, // 직선
-        },
-        point: {
-          pointStyle: "circle",
-          pointRadius: 4,
-          pointBorderWidth: 2,
-          pointHoverRadius: 4,
-          pointHoverBorderWidth: 2,
-        },
-      },
       scales: {
         x: {
-          type: "category",
           grid: {
+            color: function (context) {
+              // 첫번째, 마지막 라인 삭제하지 않고 모든 격자선 표시
+              return '#cccccc';
+            },
             display: true,
-            color: "#cccccc",
             drawOnChartArea: true,
             drawTicks: false,
             lineWidth: 1,
           },
           border: {
             display: false,
+            dash: [2, 2],
           },
+          beginAtZero: true,
+          max: 100,
           ticks: {
+            padding: 11,
+            color: '#000',
+            font: {
+              family: 'NanumSquareRound',
+              size: 14,
+            },
+            align: 'start',
             display: false, // x축 라벨 숨김
-            padding: 0,
           },
-          afterFit: function (scale) {
-            scale.height = 0;
+          afterFit: (axis) => {
+            if (_x && _x.space) {
+              axis.height += _x.space;
+              axis.height += _x.height - config.options.scales.x.ticks.font.size;
+            } else {
+              axis.height = 0;
+            }
           },
         },
         y: {
           grid: {
-            color: "#cccccc",
+            color: '#cccccc',
             drawOnChartArea: true,
             lineWidth: 1,
+            // [이슈리스트 : 230908][2839] 차트 Y축 라벨 잘려보임 수정
+            tickColor: _y ? _y.color : 'transparent',
+            tickLength: _y ? _y.space - 3 : 0,
           },
           border: {
             display: false,
+            dash: [2, 2],
           },
           beginAtZero: true,
+          // [KT요청 : 230725] 데이터 값에 관계 없이 5단계 고정
+          // 240722 0, 100 잘림 이슈 min, max, color 수정 afterTick 추가
           min: -2,
           max: 102,
           ticks: {
-            color: "transparent",
+            color: 'transparent',
             font: {
-              family: "NanumSquareRound",
+              family: 'NanumSquareRound',
               size: 16,
               weight: 700,
             },
           },
           afterTickToLabelConversion: function (chart) {
-            chart.ticks = [];
-            chart.ticks.push({ value: 0, label: "미흡" });
-            chart.ticks.push({ value: 12, label: "다소 미흡" });
-            chart.ticks.push({ value: 41, label: "보통" });
-            chart.ticks.push({ value: 61, label: "우수" });
-            chart.ticks.push({ value: 90, label: "매우 우수" });
-            chart.ticks.push({ value: 100, label: "매우 우수" });
+            chart.ticks = []
+            chart.ticks.push({ value: 0, label: '미흡'})
+            chart.ticks.push({ value: 12, label: '다소 미흡' })
+            chart.ticks.push({ value: 41, label: '보통' })
+            chart.ticks.push({ value: 61, label: '우수' })
+            chart.ticks.push({ value: 90, label: '매우 우수' })
+            chart.ticks.push({ value: 100, label: '매우 우수' })
+          },
+          afterFit: (axis) => {
+            if (_y && _y.width) {
+              axis.width = _y.width + _y.space;
+            }
           },
         },
       },
+      // 툴팁 뜨는 위치
+      interaction: {
+        intersect: false,
+        mode: 'nearest',
+        axis: 'xy',
+      },
       plugins: {
+        scaleLabel: {
+          y: {
+            display: _y,
+            width: _y ? _y.width : 0,
+            height: _y ? _y.height : 0,
+            space: _y ? _y.space : 0,
+            color: _y ? _y.color : 'transparent',
+          },
+          x: {
+            display: _x,
+            width: _x ? _x.width : 0,
+            height: _x ? _x.height : 0,
+            padding: _x ? _x.padding : 0,
+            space: _x ? _x.space : 0,
+            color: _x ? _x.color : '#fff',
+            label: _x ? _x.label : '#f4f4f4',
+            radius: _x ? _x.radius : 5,
+            halfline: _x ? _x.halfline : false,
+          },
+        },
+        lastData: {},
+        htmlLegend: {
+          containerClassName: '.radial-chart',
+        },
         legend: {
           display: false,
         },
@@ -980,36 +1417,80 @@ function setLineChart($parent, $chartWrapper, $target, $idx, label, data0, data1
         },
       },
     },
-    plugins: [pluginCursorLine],
+    plugins: [pluginCursorLine, pluginLineCustom],
   };
 
-  const chartInstance = new Chart($target[0].getContext("2d"), config);
-  _chart["LINE_CHART" + $idx] = chartInstance;
+  const chartInstance = new Chart($target[0].getContext('2d'), config);
+  _chart['LINE_CHART' + $idx] = chartInstance;
 
   // 공통 함수들 사용
-  createCustomXButtons($chartWrapper, chartInstance, label);
-  registerChartClickEvent(canvas, $chartWrapper, chartInstance, handleLineChartPointClick);
+  createCustomXButtons($chartWrapper, chartInstance, linelabel);
+  registerChartClickEvent($target[0], $chartWrapper, chartInstance, handleLineChartPointClick);
   setInitialPointSelection($chartWrapper, chartInstance, handleLineChartPointClick);
 }
 
 function loadElLineChart() {
-  let elLineCharts = document.querySelectorAll(".line-chart");
-  if (elLineCharts.length > 0) {
-    elLineCharts.forEach((lineChart, idx) => {
-      const chartWrapper = lineChart.querySelector(".chart-wrapper");
+  let elLineChart = document.querySelectorAll('.line-chart');
+  if (elLineChart) {
+    elLineChart.forEach((e, idx) => {
+      let sampleDataLabel = [];
+      let sampleLabel = [];
+
+      if (e.classList.contains('student')) {
+        sampleDataLabel = ['김민지', '과목 평균'];
+      } else {
+        sampleDataLabel = ['우리반', '과목 평균'];
+      }
+
+      if (e.classList.contains('month')) {
+        sampleLabel = ['1월', '2월', '3월', '4월', '5월'];
+      } else {
+        sampleLabel = ['1주차', '2주차', '3주차', '4주차', '5주차'];
+      }
+
+      const chartWrapper = e.querySelector(".chart-wrapper");
       if (chartWrapper) {
         const canvasElements = chartWrapper.getElementsByClassName("chart");
 
         if (canvasElements.length > 0) {
-          setLineChart(
-            lineChart,
-            chartWrapper,
-            canvasElements,
-            idx,
-            sampleLineLabels,
-            sampleLineData[0].data,
-            sampleLineData[1].data
-          );
+          if (e.classList.contains('student')) {
+            setLineChart(
+              e,
+              chartWrapper,
+              canvasElements,
+              idx,
+              setChartAttrX(e),
+              setChartAttrY(e),
+              sampleLabel,
+              sampleDataLabel,
+              sampleLineData
+            );
+          } else if (e.classList.contains('empty')) {
+            // empty 데이터 처리는 필요시 추가
+            setLineChart(
+              e,
+              chartWrapper,
+              canvasElements,
+              idx,
+              setChartAttrX(e),
+              setChartAttrY(e),
+              sampleLabel,
+              sampleDataLabel,
+              sampleLineData
+            );
+          } else {
+            setLineChart(
+              e,
+              chartWrapper,
+              canvasElements,
+              idx,
+              setChartAttrX(e),
+              setChartAttrY(e),
+              sampleLabel,
+              sampleDataLabel,
+              sampleLineData
+            );
+          }
         }
       }
     });
