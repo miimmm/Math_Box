@@ -849,14 +849,11 @@ function setLineChart($parent, $chartWrapper, $target, $idx, label, data0, data1
   const buttonWidth = 52;
   const buttonGap = 10;
   
-  // 양옆에 한 포인트 넓이만큼 여백을 주기 위해 padding 계산
-  const sidePadding = buttonWidth; // 각 사이드에 버튼 하나 크기만큼 여백
-  
   // 전체 버튼 영역 계산
   const totalButtonsWidth = buttonWidth * label.length + buttonGap * (label.length - 1);
   
-  // 캔버스 너비는 버튼 영역 + 양쪽 여백
-  const canvasWidth = totalButtonsWidth + (sidePadding * 2);
+  // 캔버스 너비는 버튼 영역과 동일하게 설정
+  const canvasWidth = totalButtonsWidth;
   
   canvas.height = chartHeight;
   canvas.width = canvasWidth;
@@ -895,8 +892,8 @@ function setLineChart($parent, $chartWrapper, $target, $idx, label, data0, data1
       },
       layout: {
         padding: {
-          left: sidePadding + (buttonWidth / 2), // 여백 + 버튼 중앙 오프셋
-          right: sidePadding + (buttonWidth / 2), // 여백 + 버튼 중앙 오프셋
+          left: buttonWidth / 2, // 첫 번째 포인트가 첫 번째 버튼 중앙에 오도록
+          right: buttonWidth / 2, // 마지막 포인트가 마지막 버튼 중앙에 오도록
           top: 20,
           bottom: 0,
         },
@@ -923,13 +920,11 @@ function setLineChart($parent, $chartWrapper, $target, $idx, label, data0, data1
         x: {
           type: "category",
           grid: {
-            color: function (context) {
-              // 첫번째, 마지막 라인 삭제
-              if (context.index == 0 || context.index == context.scale.ticks.length - 1) {
-                return false;
-              }
-              return "#cccccc";
-            },
+            display: true,
+            color: "#cccccc",
+            drawOnChartArea: true,
+            drawTicks: false,
+            lineWidth: 1,
           },
           border: {
             display: false,
@@ -945,6 +940,8 @@ function setLineChart($parent, $chartWrapper, $target, $idx, label, data0, data1
         y: {
           grid: {
             color: "#cccccc",
+            drawOnChartArea: true,
+            lineWidth: 1,
           },
           border: {
             display: false,
